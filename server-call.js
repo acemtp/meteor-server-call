@@ -2,8 +2,9 @@ ServerCall = {};
 
 if (Meteor.isServer) {
 
-  ServerCall.initServer = function (name) {
-    ServerCall.calls = new Mongo.Collection('server.calls.' + name);
+  Meteor.startup(function () {
+
+    ServerCall.calls = new Mongo.Collection('server.calls');
 
     Meteor.publish('server.calls', function () {
       return ServerCall.calls.find({ connectionId: this.connection.id });
@@ -16,6 +17,27 @@ if (Meteor.isServer) {
     });
 
     ServerCall._callbacks = {};
+
+
+    ServerCall.call = function(connectionId, name /* .. [arguments] .. callback */) {
+      // if it's a function, the last argument is the result callback,
+      // not a parameter to the remote method.
+      var args = Array.prototype.slice.call(arguments, 2);
+      var callback;
+      if (args.length && typeof args[args.length - 1] === 'function')
+        callback = args.pop();
+
+      var docId = ServerCall.calls.insert({
+        connectionId: connectionId,
+        createdAt: new Date(),
+        createdBy: Meteor.userId && Meteor.userId(),
+        name: name,
+        args: args
+      });
+      if(callback)
+        ServerCall._callbacks[docId] = callback;
+    };
+
 
     Meteor.methods({
       'server.result': function (docId, res) {
@@ -30,34 +52,23 @@ if (Meteor.isServer) {
 
     // extend the connection so we can call directly on it
     Meteor.onConnection(function (connection) {
-      console.log(connection.id, 'extend ddp connection', connection, arguments);
+      //console.log(connection.id, 'extend ddp connection', connection, arguments);
       connection.call = function(name /* .. [arguments] .. callback */) {
-        // if it's a function, the last argument is the result callback,
-        // not a parameter to the remote method.
-        var args = Array.prototype.slice.call(arguments, 1);
-        var callback;
-        if (args.length && typeof args[args.length - 1] === 'function')
-          callback = args.pop();
-
-        var docId = ServerCall.calls.insert({
-          connectionId: connection.id,
-          createdAt: new Date(),
-          createdBy: Meteor.userId && Meteor.userId(),
-          name: name,
-          args: args
-        });
-        if(callback)
-          ServerCall._callbacks[docId] = callback;
+        var args = Array.prototype.slice.call(arguments, 0);
+        args.unshift(connection.id);
+        ServerCall.call.apply(args);
       };
 
     });
 
-  };
+  });
 
 }
 
 // set the ddp connection as a bi directional call
-ServerCall.initClient = function (name, connection) {
+ServerCall.init = function (connection) {
+  //console.log('ServerCall.init', connection, connection.serverCalls);
+
   connection.subscribe('server.calls');
   connection._methodHandlers = {};
 
@@ -70,7 +81,8 @@ ServerCall.initClient = function (name, connection) {
     });
   };
 
-  connection.serverCalls = new Mongo.Collection('server.calls.' + name, { connection: connection });
+  if(!connection.serverCalls)
+    connection.serverCalls = new Mongo.Collection('server.calls', { connection: connection });
 
   var query = connection.serverCalls.find();
   var handle = query.observe({

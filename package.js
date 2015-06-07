@@ -1,6 +1,6 @@
 Package.describe({
   name: 'acemtp:server-call',
-  version: '0.0.2',
+  version: '0.0.7',
   summary: 'Be able to do method call on the server',
   git: 'https://github.com/acemtp/meteor-server-call',
   documentation: 'README.md'
