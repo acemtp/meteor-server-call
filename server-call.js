@@ -2,9 +2,8 @@ ServerCall = {};
 
 if (Meteor.isServer) {
 
-  Meteor.startup(function () {
-
-    ServerCall.calls = new Mongo.Collection('server.calls');
+  ServerCall.initServer = function (name) {
+    ServerCall.calls = new Mongo.Collection('server.calls.' + name);
 
     Meteor.publish('server.calls', function () {
       return ServerCall.calls.find({ connectionId: this.connection.id });
@@ -53,12 +52,12 @@ if (Meteor.isServer) {
 
     });
 
-  });
+  };
 
 }
 
 // set the ddp connection as a bi directional call
-ServerCall.init = function (connection) {
+ServerCall.initClient = function (name, connection) {
   connection.subscribe('server.calls');
   connection._methodHandlers = {};
 
@@ -71,7 +70,7 @@ ServerCall.init = function (connection) {
     });
   };
 
-  connection.serverCalls = new Mongo.Collection('server.calls', { connection: connection });
+  connection.serverCalls = new Mongo.Collection('server.calls.' + name, { connection: connection });
 
   var query = connection.serverCalls.find();
   var handle = query.observe({
