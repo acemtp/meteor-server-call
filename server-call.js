@@ -19,6 +19,7 @@ if (Meteor.isServer) {
     ServerCall._callbacks = {};
 
 
+
     ServerCall.call = function(connectionId, name /* .. [arguments] .. callback */) {
       // if it's a function, the last argument is the result callback,
       // not a parameter to the remote method.
@@ -30,20 +31,20 @@ if (Meteor.isServer) {
       var docId = ServerCall.calls.insert({
         connectionId: connectionId,
         createdAt: new Date(),
-        createdBy: Meteor.userId && Meteor.userId(),
+        //createdBy: this.userId || Meteor.userId && Meteor.userId(),
         name: name,
         args: args
       });
+console.log('need to exec new command', docId);
       if(callback)
         ServerCall._callbacks[docId] = callback;
     };
 
-
     Meteor.methods({
-      'server.result': function (docId, res) {
+      'server.result': function (docId, err, res) {
         check(docId, String);
         if(ServerCall._callbacks[docId]) {
-          ServerCall._callbacks[docId](res);
+          ServerCall._callbacks[docId](err, res);
           delete ServerCall._callbacks[docId];
         }
         ServerCall.calls.remove(docId);
@@ -60,19 +61,19 @@ if (Meteor.isServer) {
       };
 
     });
-
   });
 
 }
 
 // set the ddp connection as a bi directional call
 ServerCall.init = function (connection) {
-  //console.log('ServerCall.init', connection, connection.serverCalls);
+  console.log('ServerCall.init', connection.methods);
 
   connection.subscribe('server.calls');
   connection._methodHandlers = {};
 
   connection.methods = function (method) {
+console.log('register method');
     var self = connection;
     _.each(method, function (func, name) {
       if (self._methodHandlers[name])
@@ -87,10 +88,18 @@ ServerCall.init = function (connection) {
   var query = connection.serverCalls.find();
   var handle = query.observe({
     added: function (doc) {
+console.log('added', doc);
+      var res, err;
       var stub = connection._methodHandlers[doc.name];
+console.log('stub', stub, connection._methodHandlers);
       if (stub) {
-        var res = stub.apply(null, doc.args);
-        Meteor.call('server.result', doc._id, res);
+        try {
+          res = stub.apply(null, doc.args);
+
+        } catch (e) {
+          err = e;
+        }
+        connection.call('server.result', doc._id, err, res);
       }
     },
   });
