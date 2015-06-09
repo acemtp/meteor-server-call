@@ -1,6 +1,26 @@
 ServerCall = {};
 
+if (Meteor.isClient) {
+  log = function () {
+    var arr = Array.prototype.slice.call(arguments);
+    if (arguments.length > 1) {
+      arr[0] = '%c' + arguments[0] + '>';
+      arr.splice(1, 0, 'color: #0a0');
+    }
+    return console.log.apply(console, arr);
+  };
+}
+
+
 if (Meteor.isServer) {
+
+  log = function () {
+    var arr = Array.prototype.slice.call(arguments);
+    if (arguments.length > 1) {
+      arr[0] = (arguments[0] + '>').green;
+    }
+    return console.log.apply(console, arr);
+  };
 
   Meteor.startup(function () {
 
@@ -18,8 +38,6 @@ if (Meteor.isServer) {
 
     ServerCall._callbacks = {};
 
-
-
     ServerCall.call = function(connectionId, name /* .. [arguments] .. callback */) {
       // if it's a function, the last argument is the result callback,
       // not a parameter to the remote method.
@@ -35,7 +53,7 @@ if (Meteor.isServer) {
         name: name,
         args: args
       });
-console.log('ServerCall:call> exec new command', docId, ', for connectionId ', connectionId);
+log('ServerCall:call', 'exec new command', docId, ', for connectionId ', connectionId);
       if(callback)
         ServerCall._callbacks[docId] = callback;
     };
@@ -43,7 +61,7 @@ console.log('ServerCall:call> exec new command', docId, ', for connectionId ', c
     Meteor.methods({
       'server.result': function (docId, err, res) {
         check(docId, String);
-console.log('ServerCall:server.result> call callback for ', docId, err, res);
+log('ServerCall:server.result', 'call callback for ', docId, err, res);
 //        this.unblock();
         if(ServerCall._callbacks[docId]) {
           ServerCall._callbacks[docId](err, res);
@@ -55,11 +73,11 @@ console.log('ServerCall:server.result> call callback for ', docId, err, res);
 
     // extend the connection so we can call directly on it
     Meteor.onConnection(function (connection) {
-      //console.log(connection.id, 'extend ddp connection', connection, arguments);
+      //log(connection.id, 'extend ddp connection', connection, arguments);
       connection.call = function(name /* .. [arguments] .. callback */) {
         var args = Array.prototype.slice.call(arguments, 0);
         args.unshift(connection.id);
-console.log('ServerCall:connection:call> append connection.id ', connection.id, ', to call ', args);
+log('ServerCall:connection:call', 'append connection.id ', connection.id, ', to call ', args);
         ServerCall.call.apply(null, args);
       };
 
@@ -70,12 +88,12 @@ console.log('ServerCall:connection:call> append connection.id ', connection.id, 
 
 // set the ddp connection as a bi directional call
 ServerCall.init = function (connection) {
-console.log('ServerCall:init> id: connection.methods: ', _.keys(connection.methods), ' unblock ???', connection.unblock);
+log('ServerCall:init', 'id: connection.methods: ', _.keys(connection.methods), ' unblock ???', connection.unblock);
   connection.subscribe('server.calls');
   connection._methodHandlers = {};
 
   connection.methods = function (method) {
-console.log('ServerCall:connection:methods: add method', _.keys(method));
+log('ServerCall:connection:methods: add method', _.keys(method));
     var self = connection;
     _.each(method, function (func, name) {
       if (self._methodHandlers[name])
@@ -90,18 +108,18 @@ console.log('ServerCall:connection:methods: add method', _.keys(method));
   var query = connection.serverCalls.find();
   var handle = query.observe({
     added: function (doc) {
-console.log('ServerCall:handler:added> ', doc);
+log('ServerCall:handler:added', '', doc);
       var res, err;
       var stub = connection._methodHandlers[doc.name];
-console.log('ServerCall:handler:added> stub ', stub, connection._methodHandlers);
+log('ServerCall:handler:added', 'stub ', stub, connection._methodHandlers);
       if (stub) {
         try {
           res = stub.apply(null, doc.args);
-//console.log('ServerCall:handler:added> stub, res ', res);
+//log('ServerCall:handler:added', 'stub, res ', res);
 
         } catch (e) {
           err = new Meteor.Error('servercall-added-failed', e.stack);
-console.error('ServerCall:handler:added> stub error ', e.stack);
+log('ServerCall:handler:added', 'stub error'.red, e.stack);
         }
         connection.call('server.result', doc._id, err, res);
       }

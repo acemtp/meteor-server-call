@@ -11,4 +11,5 @@ Package.onUse(function(api) {
   api.addFiles('server-call.js');
 
   api.export('ServerCall');
+  api.export('log');
 });
