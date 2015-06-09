@@ -35,7 +35,7 @@ if (Meteor.isServer) {
         name: name,
         args: args
       });
-console.log('need to exec new command', docId);
+console.log('ServerCall:call> exec new command', docId, ', for connectionId ', connectionId);
       if(callback)
         ServerCall._callbacks[docId] = callback;
     };
@@ -43,6 +43,8 @@ console.log('need to exec new command', docId);
     Meteor.methods({
       'server.result': function (docId, err, res) {
         check(docId, String);
+console.log('ServerCall:server.result> call callback for ', docId, err, res);
+//        this.unblock();
         if(ServerCall._callbacks[docId]) {
           ServerCall._callbacks[docId](err, res);
           delete ServerCall._callbacks[docId];
@@ -57,7 +59,8 @@ console.log('need to exec new command', docId);
       connection.call = function(name /* .. [arguments] .. callback */) {
         var args = Array.prototype.slice.call(arguments, 0);
         args.unshift(connection.id);
-        ServerCall.call.apply(args);
+console.log('ServerCall:connection:call> append connection.id ', connection.id, ', to call ', args);
+        ServerCall.call.apply(null, args);
       };
 
     });
@@ -67,13 +70,12 @@ console.log('need to exec new command', docId);
 
 // set the ddp connection as a bi directional call
 ServerCall.init = function (connection) {
-  console.log('ServerCall.init', connection.methods);
-
+console.log('ServerCall:init> id: connection.methods: ', _.keys(connection.methods), ' unblock ???', connection.unblock);
   connection.subscribe('server.calls');
   connection._methodHandlers = {};
 
   connection.methods = function (method) {
-console.log('register method');
+console.log('ServerCall:connection:methods: add method', _.keys(method));
     var self = connection;
     _.each(method, function (func, name) {
       if (self._methodHandlers[name])
@@ -88,16 +90,18 @@ console.log('register method');
   var query = connection.serverCalls.find();
   var handle = query.observe({
     added: function (doc) {
-console.log('added', doc);
+console.log('ServerCall:handler:added> ', doc);
       var res, err;
       var stub = connection._methodHandlers[doc.name];
-console.log('stub', stub, connection._methodHandlers);
+console.log('ServerCall:handler:added> stub ', stub, connection._methodHandlers);
       if (stub) {
         try {
           res = stub.apply(null, doc.args);
+//console.log('ServerCall:handler:added> stub, res ', res);
 
         } catch (e) {
-          err = e;
+          err = new Meteor.Error('servercall-added-failed', e.stack);
+console.error('ServerCall:handler:added> stub error ', e.stack);
         }
         connection.call('server.result', doc._id, err, res);
       }
