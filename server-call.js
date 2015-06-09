@@ -88,8 +88,8 @@ if (Meteor.isServer) {
 
     // extend the connection so we can call directly on it
     Meteor.onConnection(function (connectionHandle) {
-      log('ServerCall:server:onConnection', connectionHandle.id.grey, 'insert connectionHandle to _connectionHandles'.grey);
       ServerCall._connectionHandles[connectionHandle.id] = connectionHandle;
+      log('ServerCall:server:onConnection', connectionHandle.id.grey, 'insert connectionHandle to _connectionHandles'.grey, _.pluck(ServerCall._connectionHandles, 'id'));
 
       connectionHandle.call = function(name /* .. [arguments] .. callback */) {
         var args = Array.prototype.slice.call(arguments, 0);
@@ -99,8 +99,8 @@ if (Meteor.isServer) {
       };
 
       connectionHandle.onClose(function () {
-        log('ServerCall:server:onClose', connectionHandle.id.grey, 'remove connectionHandle to _connectionHandles'.grey);
         delete ServerCall._connectionHandles[connectionHandle.id];
+        log('ServerCall:server:onClose', connectionHandle.id.grey, 'remove connectionHandle to _connectionHandles'.grey, _.pluck(ServerCall._connectionHandles, 'id'));
       });
 
 
