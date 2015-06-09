@@ -38,6 +38,9 @@ if (Meteor.isServer) {
 
     ServerCall._callbacks = {};
 
+    // store connectionHandle so when there's a call we can be sure the connection is valid
+    ServerCall._connectionHandles = {};
+
     ServerCall.call = function(connectionId, name /* .. [arguments] .. callback */) {
       // if it's a function, the last argument is the result callback,
       // not a parameter to the remote method.
@@ -46,6 +49,17 @@ if (Meteor.isServer) {
       if (args.length && typeof args[args.length - 1] === 'function')
         callback = args.pop();
 
+      if(!ServerCall._connectionHandles[connectionId]) {
+        log('ServerCall:client:call', ('call('+connectionId+', '+name+', ...) invalid connectionId.').red, 'Valid are', _.pluck(ServerCall._connectionHandles,'id'));
+        if(callback) {
+          var err = new Meteor.Error('bad-connectionid', connectionId + ' is not a valid connectionId');
+          var res = null;
+          log('ServerCall:client:call', 'call the callback with an error'.grey, err, res);
+          callback(err, res);
+        }
+        return;
+      }
+
       var docId = ServerCall.calls.insert({
         connectionId: connectionId,
         createdAt: new Date(),
@@ -53,7 +67,7 @@ if (Meteor.isServer) {
         name: name,
         args: args
       });
-log('ServerCall:call', 'exec new command', docId, ', for connectionId ', connectionId);
+      log('ServerCall:client:call', docId.grey, ('call('+connectionId+', '+name+', ...)').grey);
       if(callback)
         ServerCall._callbacks[docId] = callback;
     };
@@ -61,25 +75,34 @@ log('ServerCall:call', 'exec new command', docId, ', for connectionId ', connect
     Meteor.methods({
       'server.result': function (docId, err, res) {
         check(docId, String);
-log('ServerCall:server.result', 'call callback for ', docId, err, res);
+        log('ServerCall:client:call', docId.grey, 'result'.grey, err, res);
 //        this.unblock();
-        if(ServerCall._callbacks[docId]) {
-          ServerCall._callbacks[docId](err, res);
-          delete ServerCall._callbacks[docId];
-        }
         ServerCall.calls.remove(docId);
+        if(ServerCall._callbacks[docId]) {
+          var callback = ServerCall._callbacks[docId];
+          delete ServerCall._callbacks[docId];
+          callback(err, res);
+        }
       }
     });
 
     // extend the connection so we can call directly on it
-    Meteor.onConnection(function (connection) {
-      //log(connection.id, 'extend ddp connection', connection, arguments);
-      connection.call = function(name /* .. [arguments] .. callback */) {
+    Meteor.onConnection(function (connectionHandle) {
+      log('ServerCall:server:onConnection', connectionHandle.id.grey, 'insert connectionHandle to _connectionHandles'.grey);
+      ServerCall._connectionHandles[connectionHandle.id] = connectionHandle;
+
+      connectionHandle.call = function(name /* .. [arguments] .. callback */) {
         var args = Array.prototype.slice.call(arguments, 0);
-        args.unshift(connection.id);
-log('ServerCall:connection:call', 'append connection.id ', connection.id, ', to call ', args);
+        args.unshift(connectionHandle.id);
+        log('ServerCall:connection:call', connectionHandle.id.grey, ('call('+connectionHandle.id+', '+name+') from a connectionHandle').grey);
         ServerCall.call.apply(null, args);
       };
+
+      connectionHandle.onClose(function () {
+        log('ServerCall:server:onClose', connectionHandle.id.grey, 'remove connectionHandle to _connectionHandles'.grey);
+        delete ServerCall._connectionHandles[connectionHandle.id];
+      });
+
 
     });
   });
@@ -88,7 +111,7 @@ log('ServerCall:connection:call', 'append connection.id ', connection.id, ', to 
 
 // set the ddp connection as a bi directional call
 ServerCall.init = function (connection) {
-log('ServerCall:init', 'id: connection.methods: ', _.keys(connection.methods), ' unblock ???', connection.unblock);
+  log('ServerCall:init', 'id: connection.methods: ', _.keys(connection.methods), ' unblock ???', connection.unblock);
   connection.subscribe('server.calls');
   connection._methodHandlers = {};
 
@@ -97,7 +120,7 @@ log('ServerCall:connection:methods: add method', _.keys(method));
     var self = connection;
     _.each(method, function (func, name) {
       if (self._methodHandlers[name])
-        throw new Error("A method named '" + name + "' is already defined");
+        throw new Meteor.Error('A method named "' + name + '" is already defined');
       self._methodHandlers[name] = func;
     });
   };
@@ -116,10 +139,9 @@ log('ServerCall:handler:added', 'stub ', stub, connection._methodHandlers);
         try {
           res = stub.apply(null, doc.args);
 //log('ServerCall:handler:added', 'stub, res ', res);
-
         } catch (e) {
-          err = new Meteor.Error('servercall-added-failed', e.stack);
-log('ServerCall:handler:added', 'stub error'.red, e.stack);
+          err = e; //new Meteor.Error('servercall-added-failed', e.stack);
+//log('ServerCall:handler:added', 'stub error'.red, e.stack);
         }
         connection.call('server.result', doc._id, err, res);
       }
