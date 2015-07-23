@@ -75,6 +75,8 @@ if (Meteor.isServer) {
     Meteor.methods({
       'server.result': function (docId, err, res) {
         check(docId, String);
+        check(err, Match.Any);
+        check(res, Match.Any);
         log('ServerCall:client:call', docId.grey, 'result'.grey, err, res);
 //        this.unblock();
         ServerCall.calls.remove(docId);
