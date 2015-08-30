@@ -77,7 +77,7 @@ if (Meteor.isServer) {
         check(docId, String);
         check(err, Match.Any);
         check(res, Match.Any);
-        log('ServerCall:client:call', docId.grey, 'result'.grey, err, res);
+        //log('ServerCall:client:call', docId.grey, 'result'.grey, err, res);
 //        this.unblock();
         ServerCall.calls.remove(docId);
         if(ServerCall._callbacks[docId]) {
@@ -118,7 +118,7 @@ ServerCall.init = function (connection) {
   connection._methodHandlers = {};
 
   connection.methods = function (method) {
-log('ServerCall:connection:methods: add method', _.keys(method));
+//log('ServerCall:connection:methods: add method', _.keys(method));
     var self = connection;
     _.each(method, function (func, name) {
       if (self._methodHandlers[name])
@@ -133,17 +133,17 @@ log('ServerCall:connection:methods: add method', _.keys(method));
   var query = connection.serverCalls.find();
   var handle = query.observe({
     added: function (doc) {
-log('ServerCall:handler:added', '', doc);
+//log('ServerCall:handler:added', '', doc);
       var res, err;
       var stub = connection._methodHandlers[doc.name];
-log('ServerCall:handler:added', 'stub ', stub, connection._methodHandlers);
+//log('ServerCall:handler:added', 'stub ', stub, connection._methodHandlers);
       if (stub) {
         try {
           res = stub.apply(null, doc.args);
 //log('ServerCall:handler:added', 'stub, res ', res);
         } catch (e) {
           err = e; //new Meteor.Error('servercall-added-failed', e.stack);
-//log('ServerCall:handler:added', 'stub error'.red, e.stack);
+log('ServerCall:handler:added', 'stub error'.red, e, e.stack);
         }
         connection.call('server.result', doc._id, err, res);
       }
